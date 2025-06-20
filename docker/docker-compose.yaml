@@ -38,11 +38,26 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
     source: ../source
     target: ${DOCKER_ISAACLAB_PATH}/source
   - type: bind
+    source: ../scripts
+    target: ${DOCKER_ISAACLAB_PATH}/scripts
+  - type: bind
     source: ../docs
     target: ${DOCKER_ISAACLAB_PATH}/docs
   - type: bind
     source: ../tools
     target: ${DOCKER_ISAACLAB_PATH}/tools
+  - type: bind
+    source: ../../libraries
+    target: ${DOCKER_ISAACLAB_PATH}/libraries
+  - type: bind
+    source: ../logs
+    target: ${DOCKER_ISAACLAB_PATH}/logs
+  - type: bind
+    source: ../outputs
+    target: ${DOCKER_ISAACLAB_PATH}/outputs
+  - type: bind
+    source: ../data_storage
+    target: ${DOCKER_ISAACLAB_PATH}/data_storage
     # The effect of these volumes is twofold:
     # 1. Prevent root-owned files from flooding the _build and logs dir
     #    on the host machine
@@ -51,12 +66,9 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
   - type: volume
     source: isaac-lab-docs
     target: ${DOCKER_ISAACLAB_PATH}/docs/_build
-  - type: volume
-    source: isaac-lab-logs
-    target: ${DOCKER_ISAACLAB_PATH}/logs
-  - type: volume
-    source: isaac-lab-data
-    target: ${DOCKER_ISAACLAB_PATH}/data_storage
+  - type: bind
+    source: .isaac-lab-docker-history
+    target: ${DOCKER_USER_HOME}/.bash_history
 
 x-default-isaac-lab-environment: &default-isaac-lab-environment
   - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
@@ -76,8 +88,8 @@ services:
     profiles: [ "base" ]
     env_file: .env.base
     build:
-      context: ../
-      dockerfile: docker/Dockerfile.base
+      context: ../../
+      dockerfile: isaaclab/docker/Dockerfile.base
       args:
         - ISAACSIM_BASE_IMAGE_ARG=${ISAACSIM_BASE_IMAGE}
         - ISAACSIM_VERSION_ARG=${ISAACSIM_VERSION}
@@ -103,8 +115,8 @@ services:
       - .env.base
       - .env.ros2
     build:
-      context: ../
-      dockerfile: docker/Dockerfile.ros2
+      context: ../../
+      dockerfile: isaaclab/docker/Dockerfile.ros2
       args:
         # ROS2_APT_PACKAGE will default to NONE. This is to
         # avoid a warning message when building only the base profile
@@ -134,5 +146,3 @@ volumes:
   isaac-docs:
   # isaac-lab
   isaac-lab-docs:
-  isaac-lab-logs:
-  isaac-lab-data:

@@ -24,6 +24,7 @@
 
 # Docker/Singularity
 **/*.sif
+**/*.tar
 docker/cluster/exports/
 docker/.container.cfg
 
@@ -60,3 +61,4 @@ _build
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
+**/.isaac-lab-docker-history

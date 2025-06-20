@@ -59,7 +59,8 @@ class ContainerInterface:
         self.image_name = f"isaac-lab-{self.profile}:latest"
 
         # keep the environment variables from the current environment
-        self.environ = os.environ
+        self.environ = os.environ.copy()
+        self.environ["DOCKER_BUILDKIT"] = "1"
 
         # resolve the image extension through the passed yamls and envs
         self._resolve_image_extension(yamls, envs)
@@ -100,26 +101,37 @@ class ContainerInterface:
             " background...\n"
         )
 
-        # build the image for the base profile
-        subprocess.run(
-            [
-                "docker",
-                "compose",
-                "--file",
-                "docker-compose.yaml",
-                "--env-file",
-                ".env.base",
-                "build",
-                "isaac-lab-base",
-            ],
-            check=False,
-            cwd=self.context_dir,
-            env=self.environ,
-        )
+        host_dirs = [
+            self.context_dir.parent / "logs",
+            self.context_dir.parent / "outputs", 
+            self.context_dir.parent / "data_storage"
+        ]
+        
+        for host_dir in host_dirs:
+            if not host_dir.exists():
+                print(f"[INFO] Creating directory: {host_dir}")
+                host_dir.mkdir(parents=True, exist_ok=True)
+
+        # build the image for the base profile if not running base (up will build base already if profile is base)
+        if self.profile != "base":
+            subprocess.run(
+                [
+                    "docker-compose",
+                    "-f",
+                    "docker-compose.yaml",
+                    "--env-file",
+                    ".env.base",
+                    "build",
+                    "isaac-lab-base",
+                ],
+                check=False,
+                cwd=self.context_dir,
+                env=self.environ,
+            )
 
         # build the image for the profile
         subprocess.run(
-            ["docker", "compose"]
+            ["docker-compose"]
             + self.add_yamls
             + self.add_profiles
             + self.add_env_files
@@ -158,13 +170,54 @@ class ContainerInterface:
         if self.is_container_running():
             print(f"[INFO] Stopping the launched docker container '{self.container_name}'...\n")
             subprocess.run(
-                ["docker", "compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["down"],
+                ["docker-compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["down"],
                 check=False,
                 cwd=self.context_dir,
                 env=self.environ,
             )
         else:
             raise RuntimeError(f"Can't stop container '{self.container_name}' as it is not running.")
+        
+    def hard_stop(self):
+        """Remove all the containers and files associated with the container.
+
+        Raises:
+            RuntimeError: If the container is not running.
+        """
+        if self.is_container_running():
+            print(f"[INFO] Hard stopping the launched docker container '{self.container_name}'...\n")
+            subprocess.run(
+                ["docker-compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["down", "--volumes"],
+                check=False,
+                cwd=self.context_dir,
+                env=self.environ,
+            )
+        else:
+            raise RuntimeError(f"Can't stop container '{self.container_name}' as it is not running.")
+
+    def cleanup(self):
+        """Remove all containers, networks, volumes, and images created by `up`."""
+        print(f"[INFO] Cleaning up docker environment for '{self.container_name}'...\n")
+        # First, bring down the containers and remove volumes
+        subprocess.run(
+            ["docker-compose"]
+            + self.add_yamls
+            + self.add_profiles
+            + self.add_env_files
+            + ["down", "--volumes", "--remove-orphans"],
+            check=False,
+            cwd=self.context_dir,
+            env=self.environ,
+        )
+        # Then, remove the specific docker image
+        if self.does_image_exist():
+            print(f"[INFO] Removing docker image '{self.image_name}'...\n")
+            subprocess.run(
+                ["docker", "rmi", self.image_name],
+                check=False,
+                cwd=self.context_dir,
+                env=self.environ,
+            )
 
     def copy(self, output_dir: Path | None = None):
         """Copy artifacts from the running container to the host machine.
@@ -235,7 +288,7 @@ class ContainerInterface:
 
         # run the docker compose config command to generate the configuration
         subprocess.run(
-            ["docker", "compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["config"] + output,
+            ["docker-compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["config"] + output, 
             check=False,
             cwd=self.context_dir,
             env=self.environ,

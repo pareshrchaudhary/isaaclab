@@ -26,7 +26,6 @@
 **/*.sif
 **/*.tar
 docker/cluster/exports/
-docker/.container.cfg
 
 # IDE
 **/.idea/
@@ -61,4 +60,3 @@ _build
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
-**/.isaac-lab-docker-history

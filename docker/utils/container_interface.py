@@ -36,7 +36,7 @@ class ContainerInterface:
                 they are provided.
             statefile: An instance of the :class:`Statefile` class to manage state variables. Defaults to None, in
                 which case a new configuration object is created by reading the configuration file at the path
-                ``context_dir/.container.cfg``.
+                ``context_dir.parent.parent/docker_volumes/config/.container.cfg``.
         """
         # set the context directory
         self.context_dir = context_dir
@@ -44,7 +44,7 @@ class ContainerInterface:
         # create a state-file if not provided
         # the state file is a manager of run-time state variables that are saved to a file
         if statefile is None:
-            self.statefile = StateFile(path=self.context_dir / ".container.cfg")
+            self.statefile = StateFile(path=self.context_dir.parent.parent / "docker_volumes" / "config" / ".container.cfg")
         else:
             self.statefile = statefile
 
@@ -101,6 +101,7 @@ class ContainerInterface:
             " background...\n"
         )
 
+        # Create Isaac Lab directories
         host_dirs = [
             self.context_dir.parent / "logs",
             self.context_dir.parent / "outputs", 
@@ -111,6 +112,35 @@ class ContainerInterface:
             if not host_dir.exists():
                 print(f"[INFO] Creating directory: {host_dir}")
                 host_dir.mkdir(parents=True, exist_ok=True)
+                
+        # Create docker_volumes directories for bind mounts
+        docker_volumes_root = self.context_dir.parent.parent / "docker_volumes"
+        docker_volume_dirs = [
+            # Kit cache and logs
+            docker_volumes_root / "kit" / "cache",
+            docker_volumes_root / "kit" / "logs" / "Kit" / "Isaac-Sim",
+            # Cache directories
+            docker_volumes_root / "cache" / "ov",
+            docker_volumes_root / "cache" / "pip",
+            docker_volumes_root / "cache" / "nvidia" / "GLCache",
+            docker_volumes_root / "cache" / "compute",
+            # Logs and data
+            docker_volumes_root / "logs" / "omniverse",
+            docker_volumes_root / "data" / "omniverse",
+            docker_volumes_root / "docs",
+            # Shell history
+            docker_volumes_root / "shell_history",
+        ]
+        
+        for dir_path in docker_volume_dirs:
+            if not dir_path.exists():
+                print(f"[INFO] Creating docker_volumes directory: {dir_path}")
+                dir_path.mkdir(parents=True, exist_ok=True)
+                
+        # Create bash_history file if it doesn't exist
+        bash_history_file = docker_volumes_root / "shell_history" / ".bash_history"
+        if not bash_history_file.exists():
+            bash_history_file.touch()
 
         # build the image for the base profile if not running base (up will build base already if profile is base)
         if self.profile != "base":
@@ -198,6 +228,7 @@ class ContainerInterface:
     def cleanup(self):
         """Remove all containers, networks, volumes, and images created by `up`."""
         print(f"[INFO] Cleaning up docker environment for '{self.container_name}'...\n")
+        
         # First, bring down the containers and remove volumes
         subprocess.run(
             ["docker-compose"]
@@ -209,7 +240,8 @@ class ContainerInterface:
             cwd=self.context_dir,
             env=self.environ,
         )
-        # Then, remove the specific docker image
+        
+        # Then, remove the specific docker image if it exists
         if self.does_image_exist():
             print(f"[INFO] Removing docker image '{self.image_name}'...\n")
             subprocess.run(
@@ -294,9 +326,111 @@ class ContainerInterface:
             env=self.environ,
         )
 
-    """
-    Helper functions.
-    """
+    def deep_cleanup(self):
+        """Perform a deep cleanup of all resources created by the container.
+        
+        This includes:
+        - All containers, networks, and volumes (from regular cleanup)
+        - Base NVIDIA Isaac Sim image
+        - All Isaac Lab related images and volumes
+        - Project-specific data
+        - Dangling volumes and images
+        
+        Note:
+            This cleanup only affects resources related to Isaac Lab containers and won't touch other Docker resources.
+        
+        Warning:
+            This is a destructive operation that will remove ALL data associated with the Isaac Lab container.
+            Use with caution.
+        """
+        print(f"[INFO] Starting deep cleanup for '{self.container_name}'...\n")
+        
+        # First perform regular cleanup
+        self.cleanup()
+        
+        # Remove the base NVIDIA Isaac Sim image if it exists
+        base_image = f"{self.dot_vars.get('ISAACSIM_BASE_IMAGE', 'nvcr.io/nvidia/isaac-sim')}:{self.dot_vars.get('ISAACSIM_VERSION', '4.5.0')}"
+        print(f"[INFO] Removing base image '{base_image}'...\n")
+        subprocess.run(
+            ["docker", "rmi", "-f", base_image],
+            check=False,
+            cwd=self.context_dir,
+            env=self.environ,
+        )
+        
+        # Create a temporary cleanup container to remove root-owned files
+        print("[INFO] Creating temporary container to clean up files...\n")
+        cleanup_container = "isaac-lab-cleanup"
+        subprocess.run(
+            ["docker", "run", "--rm", "-d", "--name", cleanup_container,
+             "-v", f"{self.context_dir.parent}/logs:/cleanup/logs",
+             "-v", f"{self.context_dir.parent}/outputs:/cleanup/outputs",
+             "-v", f"{self.context_dir.parent}/data_storage:/cleanup/data_storage",
+             "-v", f"{self.context_dir.parent}/docs/_build:/cleanup/docs_build",
+             "alpine:latest", "sh", "-c", "rm -rf /cleanup/* && sleep 1"],
+            check=False,
+            cwd=self.context_dir,
+            env=self.environ,
+        )
+        
+        # Remove all dangling volumes (not associated with any container)
+        print("[INFO] Removing dangling volumes...\n")
+        subprocess.run(
+            ["docker", "volume", "prune", "-f"],
+            check=False,
+            cwd=self.context_dir,
+            env=self.environ,
+        )
+        
+        # Remove all Isaac Lab related images
+        print("[INFO] Removing all Isaac Lab related docker images...\n")
+        # Get all images related to isaac-lab
+        images = subprocess.run(
+            ["docker", "images", "-a", "-q", "--filter", "reference=isaac-lab-*"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=self.context_dir,
+            env=self.environ,
+        ).stdout.strip().split('\n')
+        if images and images[0]:  # Only proceed if we found images
+            print("\t- Removing Isaac Lab images")
+            subprocess.run(
+                ["docker", "rmi", "-f"] + images,
+                check=False,
+                cwd=self.context_dir,
+                env=self.environ,
+            )
+        
+        # Remove dangling images
+        print("[INFO] Removing dangling images...\n")
+        subprocess.run(
+            ["docker", "image", "prune", "-f"],
+            check=False,
+            cwd=self.context_dir,
+            env=self.environ,
+        )
+        
+        # Remove the container configuration file
+        config_file = self.context_dir.parent.parent / "docker_volumes" / "config" / ".container.cfg"
+        if config_file.exists():
+            print(f"[INFO] Removing container configuration file: {config_file}\n")
+            try:
+                config_file.unlink()
+            except Exception as e:
+                print(f"\t  Warning: Failed to remove config file: {e}")
+            
+        # Remove docker history file
+        history_file = self.context_dir.parent / "docker_volumes" / "shell_history" / ".bash_history"
+        if history_file.exists():
+            print(f"[INFO] Removing docker history file: {history_file}\n")
+            try:
+                history_file.unlink()
+            except Exception as e:
+                print(f"\t  Warning: Failed to remove history file: {e}")
+            
+        print("[INFO] Deep cleanup completed.\n")
+
 
     def _resolve_image_extension(self, yamls: list[str] | None = None, envs: list[str] | None = None):
         """

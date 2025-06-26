@@ -13,7 +13,7 @@ docs/
 *.tmp
 # ignore docker
 docker/cluster/exports/
-docker/.container.cfg
+../docker_volumes/config/.container.cfg
 **/*.tar
 # ignore recordings
 recordings/

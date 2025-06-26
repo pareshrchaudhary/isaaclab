@@ -54,6 +54,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
 
 # Copy the Isaac Lab directory (files to exclude are defined in .dockerignore)
 COPY isaaclab/ ${ISAACLAB_PATH}
+
 # Ensure the script is executable
 RUN chmod +x ${ISAACLAB_PATH}/isaaclab.sh
 
@@ -69,17 +70,55 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt -y autoremove && apt clean autoclean && \
     rm -rf /var/lib/apt/lists/*
 
-# for singularity usage, have to create the directories that will binded
-RUN mkdir -p ${ISAACSIM_ROOT_PATH}/kit/cache && \
-    mkdir -p ${DOCKER_USER_HOME}/.cache/ov && \
-    mkdir -p ${DOCKER_USER_HOME}/.cache/pip && \
-    mkdir -p ${DOCKER_USER_HOME}/.cache/nvidia/GLCache &&  \
-    mkdir -p ${DOCKER_USER_HOME}/.nv/ComputeCache && \
-    mkdir -p ${DOCKER_USER_HOME}/.nvidia-omniverse/logs && \
-    mkdir -p ${DOCKER_USER_HOME}/.local/share/ov/data && \
-    mkdir -p ${DOCKER_USER_HOME}/Documents
+# ==============================================================================
+# VOLUME DIRECTORY CREATION FOR BIND MOUNTS
+# ==============================================================================
+# These directories are created inside the container to ensure proper bind mount targets exist.
+# They correspond to the bind mounts defined in docker-compose.yaml.
+# 
+# For detailed information about the volume strategy, see README.md in this directory.
+#
+# WHY CREATE THESE DIRECTORIES:
+# 1. Docker bind mounts require the target directory to exist in the container
+# 2. If the directory doesn't exist, Docker creates it as root, causing permission issues
+# 3. Creating them explicitly ensures proper ownership and permissions
+# 4. These directories will be "overlaid" by bind mounts at runtime
 
-# for singularity usage, create NVIDIA binary placeholders
+# Create Isaac Sim related cache and log directories
+RUN mkdir -p ${ISAACSIM_ROOT_PATH}/kit/cache && \
+    mkdir -p ${ISAACSIM_ROOT_PATH}/kit/logs/Kit/Isaac-Sim
+
+# Create user home cache directories for various NVIDIA/Omniverse components
+RUN mkdir -p ${DOCKER_USER_HOME}/cache/ov && \
+    mkdir -p ${DOCKER_USER_HOME}/cache/pip && \
+    mkdir -p ${DOCKER_USER_HOME}/cache/nvidia/GLCache && \
+    mkdir -p ${DOCKER_USER_HOME}/cache/compute && \
+    mkdir -p ${DOCKER_USER_HOME}/logs/omniverse && \
+    mkdir -p ${DOCKER_USER_HOME}/data/omniverse && \
+    mkdir -p ${DOCKER_USER_HOME}/docs
+    # mkdir -p ${ISAACLAB_PATH}/docs/_build
+
+# ==============================================================================
+# SINGULARITY COMPATIBILITY
+# ==============================================================================
+# The following sections are for Singularity container compatibility.
+# Singularity has different volume mounting behavior than Docker.
+
+# Create additional directories that will be bound when using Singularity
+# Note: These overlap with the bind mount directories above, but are needed for Singularity
+RUN mkdir -p ${ISAACSIM_ROOT_PATH}/kit/cache && \
+    mkdir -p ${DOCKER_USER_HOME}/cache/ov && \
+    mkdir -p ${DOCKER_USER_HOME}/cache/pip && \
+    mkdir -p ${DOCKER_USER_HOME}/cache/nvidia/GLCache && \
+    mkdir -p ${DOCKER_USER_HOME}/cache/compute && \
+    mkdir -p ${DOCKER_USER_HOME}/logs/omniverse && \
+    mkdir -p ${DOCKER_USER_HOME}/data/omniverse && \
+    mkdir -p ${DOCKER_USER_HOME}/docs
+    # mkdir -p ${ISAACLAB_PATH}/docs/_build && \
+    # mkdir -p ${DOCKER_USER_HOME}/docs/_build
+
+# Create NVIDIA binary placeholders for Singularity
+# Singularity needs these files to exist for proper GPU support
 RUN touch /bin/nvidia-smi && \
     touch /bin/nvidia-debugdump && \
     touch /bin/nvidia-persistenced && \

@@ -7,6 +7,7 @@ This directory contains all Docker-related files and utilities for Isaac Lab dep
 Isaac Lab uses Docker containers to provide consistent, reproducible environments across different platforms. The Docker setup includes:
 
 - **Base Container**: Isaac Lab with Isaac Sim integration
+- **Local Asset Support**: Optional local Isaac Sim asset packs for improved performance
 - **Cluster Support**: Utilities for running on HPC clusters with Apptainer
 - **Development Tools**: Live code editing and persistent data storage
 
@@ -80,7 +81,8 @@ docker_volumes/
 ├── data/omniverse/            - Omniverse user data (scenes, materials, custom assets)
 ├── docs/                      - User documentation and configuration files
 ├── docs_build/                - Built documentation artifacts (prevents root-owned files)
-└── shell_history/             - Persistent bash shell history
+├── shell_history/             - Persistent bash shell history
+└── assets/Assets/Isaac/4.5/   - Local Isaac Sim asset packs (optional)
 ```
 
 ### Bind Mount Mappings
@@ -131,6 +133,12 @@ These bind mounts allow live editing of Isaac Lab source code:
 | `../data_storage` | `${DOCKER_ISAACLAB_PATH}/data_storage` | Data storage |
 | `../../docker_volumes/docs_build` | `${DOCKER_ISAACLAB_PATH}/docs/_build` | Built documentation artifacts |
 
+#### Isaac Sim Assets Volume
+
+| Host Path | Container Path | Purpose |
+|-----------|----------------|---------|
+| `../../docker_volumes/assets/Assets/Isaac/4.5` | `/isaacsim_assets/Assets/Isaac/4.5` | Local Isaac Sim asset packs |
+
 ### Directory Population Lifecycle
 
 **IMPORTANT**: When do directories get populated?
@@ -143,6 +151,107 @@ These bind mounts allow live editing of Isaac Lab source code:
   - First pip install: Populates Python package cache
   - Training runs: Creates logs, outputs, and training data
   - Omniverse operations: Downloads assets and creates client cache
+
+## Isaac Sim Asset Management
+
+Isaac Lab now supports **local Isaac Sim asset packs** to improve performance and reduce dependency on cloud asset downloads. The container automatically checks for local assets and provides guidance when they are not found.
+
+### Asset Strategy
+
+Isaac Lab containers are configured to use local assets when available, with automatic fallback to cloud assets. This provides:
+
+1. **Faster loading** - No network downloads during simulation startup
+2. **Offline capability** - Run simulations without internet connectivity
+3. **Consistent assets** - Guaranteed asset versions across different environments
+4. **Reduced bandwidth** - Avoid repeated downloads of large asset files
+
+### Asset Configuration
+
+The container configures Isaac Sim to use local assets through multiple methods:
+
+#### 1. Configuration File Method
+The `Dockerfile.base` automatically modifies the Isaac Sim configuration file (`isaacsim.exp.base.kit`) to set:
+- `persistent.isaac.asset_root.default = "/isaacsim_assets/Assets/Isaac/4.5"`
+- Asset browser folder paths pointing to local directories
+
+#### 2. Command-Line Flag Method  
+The container also provides wrapper scripts that include the asset root flag:
+- `isaac-sim-assets` - Isaac Sim with local assets configured
+- `python-assets` - Python launcher with local assets configured
+
+#### 3. Environment Variable
+The container sets `ISAACSIM_ASSET_ROOT=/isaacsim_assets/Assets/Isaac/4.5` to inform applications of the local asset location.
+
+### Setting Up Local Assets
+
+When you start the container, it automatically checks for local assets and provides detailed instructions if they are missing:
+
+#### Manual Asset Download
+
+1. **Download Asset Packs**: Visit the [Isaac Sim documentation](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_faq.html#isaac-sim-setup-assets-content-pack) and download the three asset packs:
+   - `isaac-sim-assets-1@4.5.0-rc.36+release.19112.f59b3005.zip`
+   - `isaac-sim-assets-2@4.5.0-rc.36+release.19112.f59b3005.zip`
+   - `isaac-sim-assets-3@4.5.0-rc.36+release.19112.f59b3005.zip`
+
+2. **Extract Assets**: Extract all three zip files to `docker_volumes/assets/Assets/Isaac/4.5`:
+   ```bash
+   cd docker_volumes/assets/Assets/Isaac/4.5
+   unzip isaac-sim-assets-1@4.5.0-rc.36+release.19112.f59b3005.zip
+   unzip isaac-sim-assets-2@4.5.0-rc.36+release.19112.f59b3005.zip
+   unzip isaac-sim-assets-3@4.5.0-rc.36+release.19112.f59b3005.zip
+   ```
+
+3. **Verify Structure**: Ensure the final directory contains both `NVIDIA` and `Isaac` folders:
+   ```
+   docker_volumes/assets/Assets/Isaac/4.5/
+   ├── NVIDIA/
+   └── Isaac/
+   ```
+
+#### Automatic Asset Checking
+
+The container interface automatically:
+- Checks for local assets when starting the container
+- Provides step-by-step download instructions if assets are missing
+- Verifies the correct directory structure exists
+- Continues with cloud assets if local assets are not available
+
+### Asset Usage
+
+Once local assets are configured:
+
+#### Using Local Assets (Default)
+```bash
+# Isaac Sim will automatically use local assets when available
+./docker/container.py start
+./docker/container.py enter
+isaaclab  # Uses local assets by default
+```
+
+#### Using Cloud Assets (Override)
+If you need to use cloud assets instead of local ones, you can override the configuration:
+```bash
+# Override asset root to use cloud assets
+./isaac-sim/python.sh --/persistent/isaac/asset_root/default="" your_script.py
+```
+
+### Troubleshooting Assets
+
+#### Asset Not Found Errors
+If you encounter "asset not found" errors:
+1. Check that assets are properly extracted to `docker_volumes/assets/Assets/Isaac/4.5`
+2. Verify both `NVIDIA` and `Isaac` folders exist in the assets directory
+3. Restart the container after adding assets
+4. Check container logs for asset-related warnings
+
+#### Network Issues
+If cloud asset downloads fail:
+1. Verify internet connectivity from within the container
+2. Check firewall settings for Omniverse asset servers
+3. Consider using local assets for offline environments
+
+#### Storage Space
+Local assets require approximately 10-15 GB of disk space. Monitor the `docker_volumes/assets` directory size and ensure sufficient disk space is available.
 
 ## Advanced Usage
 
@@ -201,4 +310,7 @@ Monitor the `docker_volumes` directory size, especially the cache subdirectories
 - **Container won't start**: Check Docker and NVIDIA driver compatibility
 - **GPU not detected**: Ensure NVIDIA Container Toolkit is installed
 - **X11 forwarding fails**: Install xauth on the host system
-- **Permission denied**: Check file ownership in docker_volumes directory 
+- **Permission denied**: Check file ownership in docker_volumes directory
+- **Asset not found errors**: Check local assets are properly downloaded and extracted to `docker_volumes/assets/Assets/Isaac/4.5`
+- **Slow asset loading**: Consider downloading local assets to avoid network delays
+- **Missing NVIDIA/Isaac folders**: Re-extract all three asset pack zip files to the assets directory 

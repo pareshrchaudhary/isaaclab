@@ -17,29 +17,31 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Get the directory where this script is located
+# Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Define the target directory relative to the script location
 TARGET_DIR="$SCRIPT_DIR/../../../hyak_transfer"
 TAR_FILE="$TARGET_DIR/isaac-lab-base.tar"
 DOCKER_VOLUMES_DIR="$SCRIPT_DIR/../../../docker_volumes"
 HYAK_TRANSFER_DIR="/gscratch/socialrl/prc/adversarial_manipulation/"
 
-# If only syncing docker volumes, skip tar creation
+# Function to sync docker volumes
+sync_volumes() {
+    if [ -d "$DOCKER_VOLUMES_DIR" ]; then
+        echo "Syncing docker_volumes directory to Hyak..."
+        rsync -avz --progress --chmod=u=rwX,go=rX --ignore-errors --exclude="assets" "$DOCKER_VOLUMES_DIR" pareshrc@klone.hyak.uw.edu:"$HYAK_TRANSFER_DIR"
+    else
+        echo "Error: docker_volumes directory not found at $DOCKER_VOLUMES_DIR" && exit 1
+    fi
+}
+
+# If only syncing docker volumes, do that and exit
 if [ "$DOCKER_VOLUMES_ONLY" = true ]; then
     echo "Syncing docker_volumes directory to Hyak only..."
-    if [ -d "$DOCKER_VOLUMES_DIR" ]; then
-        rsync -avz --progress --chmod=u=rwX,go=rX --ignore-errors "$DOCKER_VOLUMES_DIR" pareshrc@klone.hyak.uw.edu:"$HYAK_TRANSFER_DIR"
-        echo "Docker volumes sync completed!"
-    else
-        echo "Error: docker_volumes directory not found at $DOCKER_VOLUMES_DIR"
-        exit 1
-    fi
-    exit 0
+    sync_volumes
+    echo "Docker volumes sync completed!" && exit 0
 fi
 
-# Create target directory if it doesn't exist
+# Create tar file
 mkdir -p "$TARGET_DIR"
 
 if [ -f "$TAR_FILE" ]; then
@@ -53,8 +55,10 @@ docker save isaac-lab-base:latest -o "$TAR_FILE"
 echo "Checking size of the tar file..."
 ls -lh "$TAR_FILE"
 
+# Ask user and transfer if confirmed
 echo "Do you want to send it to Hyak? (y/n)"
 read -r response
+
 if [[ "$response" == "y" || "$response" == "Y" ]]; then
     echo "Checking if tar file exists on Hyak and removing if present..."
     ssh pareshrc@klone.hyak.uw.edu "rm -f '$HYAK_TRANSFER_DIR/hyak_transfer/isaac-lab-base.tar' && echo 'Tar file removed or not found on Hyak.'"
@@ -62,10 +66,7 @@ if [[ "$response" == "y" || "$response" == "Y" ]]; then
     echo "Sending Docker image tar to Hyak..."
     rsync -avz --progress "$TARGET_DIR" pareshrc@klone.hyak.uw.edu:"$HYAK_TRANSFER_DIR"
     
-    if [ -d "$DOCKER_VOLUMES_DIR" ]; then
-        echo "Syncing docker_volumes directory to Hyak..."
-        rsync -avz --progress --chmod=u=rwX,go=rX --ignore-errors "$DOCKER_VOLUMES_DIR" pareshrc@klone.hyak.uw.edu:"$HYAK_TRANSFER_DIR"
-    fi
+    sync_volumes
     echo "Transfer completed!"
 else
     echo "Skipping transfer to Hyak."

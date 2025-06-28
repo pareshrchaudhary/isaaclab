@@ -116,17 +116,14 @@ x-default-isaac-lab-volumes: &default-isaac-lab-volumes
     source: ../../docker_volumes/shell_history/.bash_history
     target: ${DOCKER_USER_HOME}/.bash_history
 
+  # Bind mount for local Isaac Sim assets
+  - type: bind
+    source: ../../docker_volumes/assets/Assets/Isaac/4.5
+    target: /isaacsim_assets/Assets/Isaac/4.5
+
 x-default-isaac-lab-environment: &default-isaac-lab-environment
   - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
   - OMNI_KIT_ALLOW_ROOT=1
-  - OMNI_KIT_CACHE_ENABLE=1
-  - OMNI_KIT_CACHE_DIR=/root/cache/ov
-  - ISAAC_CACHE_ENABLE=1
-  - OMNI_KIT_SHADER_CACHE_ENABLE=1
-  - OMNI_KIT_TEXTURE_STREAMING_CACHE_ENABLE=1
-  - OMNI_KIT_MATERIAL_CACHE_ENABLE=1
-  - CARB_CACHE_ENABLE=1
-  - USD_CACHE_ENABLE=1
 
 x-default-isaac-lab-deploy: &default-isaac-lab-deploy
   resources:
@@ -152,7 +149,11 @@ services:
         - DOCKER_USER_HOME_ARG=${DOCKER_USER_HOME}
     image: isaac-lab-base
     container_name: isaac-lab-base
-    environment: *default-isaac-lab-environment
+    environment:
+      - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
+      - OMNI_KIT_ALLOW_ROOT=1
+      # Use local assets if available
+      - ISAACSIM_ASSET_ROOT=/isaacsim_assets/Assets/Isaac/4.5
     volumes: *default-isaac-lab-volumes
     network_mode: host
     deploy: *default-isaac-lab-deploy

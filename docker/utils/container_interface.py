@@ -94,6 +94,28 @@ class ContainerInterface:
         result = subprocess.run(["docker", "image", "inspect", self.image_name], capture_output=True, text=True)
         return result.returncode == 0
 
+    def check_isaac_assets(self):
+        """Check if Isaac Sim asset packs exist in the required location.
+        
+        Verifies that Isaac Sim assets are present in docker_volumes/assets/Assets/Isaac/4.5.
+        If not found, provides instructions for manual download.
+        """
+        # Define the target directory
+        assets_dir = self.context_dir.parent.parent / "docker_volumes" / "assets" / "Assets" / "Isaac" / "4.5"
+        
+        # Check if assets already exist (look for both NVIDIA and Isaac folders)
+        if (assets_dir.exists() and 
+            (assets_dir / "NVIDIA").exists() and 
+            (assets_dir / "Isaac").exists()):
+            print(f"[INFO] Isaac Sim assets found at {assets_dir}")
+            return
+            
+        print(f"[INFO] Isaac Sim assets not found at {assets_dir}")
+        print("[INFO] Download the three Isaac Sim asset packs from:")
+        print("[INFO] https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_faq.html#isaac-sim-setup-assets-content-pack")
+        print(f"[INFO] Extract to: {assets_dir}")
+        print("[INFO] Cloud assets will be used by default if local assets are unavailable.")
+
     def start(self):
         """Build and start the Docker container using the Docker compose command."""
         print(
@@ -142,6 +164,9 @@ class ContainerInterface:
         if not bash_history_file.exists():
             bash_history_file.touch()
 
+        # Check Isaac Sim assets if they don't exist
+        self.check_isaac_assets()
+
         # build the image for the base profile if not running base (up will build base already if profile is base)
         if self.profile != "base":
             subprocess.run(
@@ -179,12 +204,22 @@ class ContainerInterface:
         """
         if self.is_container_running():
             print(f"[INFO] Entering the existing '{self.container_name}' container in a bash session...\n")
+            
+            # Check if X11 forwarding is enabled in the configuration
+            self.statefile.namespace = "X11"
+            is_x11_enabled = self.statefile.get_variable("X11_FORWARDING_ENABLED")
+            
+            # Only forward DISPLAY if X11 is explicitly enabled
+            display_args = []
+            if is_x11_enabled == "1" and "DISPLAY" in os.environ:
+                display_args = ["-e", f"DISPLAY={os.environ['DISPLAY']}"]
+            
             subprocess.run([
                 "docker",
                 "exec",
                 "--interactive",
                 "--tty",
-                *(["-e", f"DISPLAY={os.environ['DISPLAY']}"] if "DISPLAY" in os.environ else []),
+                *display_args,
                 f"{self.container_name}",
                 "bash",
             ])

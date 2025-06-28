@@ -155,6 +155,51 @@ RUN echo "export ISAACLAB_PATH=${ISAACLAB_PATH}" >> ${HOME}/.bashrc && \
     echo "shopt -s histappend" >> /root/.bashrc && \
     echo "PROMPT_COMMAND='history -a'" >> /root/.bashrc
 
+# ==============================================================================
+# ISAAC SIM ASSET CONFIGURATION
+# ==============================================================================
+# Configure Isaac Sim to use local assets instead of downloading from the cloud
+# This modifies the isaacsim.exp.base.kit file to set the asset root path
+# to the bind-mounted local assets directory
+
+# Create the asset configuration section in isaacsim.exp.base.kit
+RUN echo "" >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "[settings]" >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "persistent.isaac.asset_root.default = \"/isaacsim_assets/Assets/Isaac/4.5\"" >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "exts.\"isaacsim.asset.browser\".folders = [" >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/Robots\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/People\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/IsaacLab\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/Props\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/Environments\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/Materials\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/Samples\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "    \"/isaacsim_assets/Assets/Isaac/4.5/Isaac/Sensors\"," >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit && \
+    echo "]" >> ${ISAACSIM_ROOT_PATH}/kit/isaacsim.exp.base.kit
+
+# ==============================================================================
+# ISAAC SIM COMMAND-LINE FLAG CONFIGURATION
+# ==============================================================================
+# Configure Isaac Sim launch scripts to use the local assets flag by default
+# This provides an additional way to set the asset root via command-line
+# The flag: --/persistent/isaac/asset_root/default="/isaacsim_assets/Assets/Isaac/4.5"
+
+# Create a wrapper script that adds the asset root flag to Isaac Sim launches
+RUN echo '#!/bin/bash' > ${ISAACSIM_ROOT_PATH}/isaac-sim-with-assets.sh && \
+    echo '# Isaac Sim launcher with local assets configured' >> ${ISAACSIM_ROOT_PATH}/isaac-sim-with-assets.sh && \
+    echo 'exec ${ISAACSIM_ROOT_PATH}/isaac-sim.sh --/persistent/isaac/asset_root/default="/isaacsim_assets/Assets/Isaac/4.5" "$@"' >> ${ISAACSIM_ROOT_PATH}/isaac-sim-with-assets.sh && \
+    chmod +x ${ISAACSIM_ROOT_PATH}/isaac-sim-with-assets.sh
+
+# Also create a Python wrapper for headless usage
+RUN echo '#!/bin/bash' > ${ISAACSIM_ROOT_PATH}/python-with-assets.sh && \
+    echo '# Python launcher with local assets configured' >> ${ISAACSIM_ROOT_PATH}/python-with-assets.sh && \
+    echo 'exec ${ISAACSIM_ROOT_PATH}/python.sh --/persistent/isaac/asset_root/default="/isaacsim_assets/Assets/Isaac/4.5" "$@"' >> ${ISAACSIM_ROOT_PATH}/python-with-assets.sh && \
+    chmod +x ${ISAACSIM_ROOT_PATH}/python-with-assets.sh
+
+# Add aliases for the asset-enabled versions
+RUN echo "alias isaac-sim-assets=${ISAACSIM_ROOT_PATH}/isaac-sim-with-assets.sh" >> ${HOME}/.bashrc && \
+    echo "alias python-assets=${ISAACSIM_ROOT_PATH}/python-with-assets.sh" >> ${HOME}/.bashrc
+
 # make working directory as the Isaac Lab directory
 # this is the default directory when the container is run
 WORKDIR ${ISAACLAB_PATH}

@@ -368,11 +368,9 @@ class ContainerInterface:
         - All containers, networks, and volumes (from regular cleanup)
         - Base NVIDIA Isaac Sim image
         - All Isaac Lab related images and volumes
+        - Entire docker_volumes directory (except assets)
         - Project-specific data
         - Dangling volumes and images
-        
-        Note:
-            This cleanup only affects resources related to Isaac Lab containers and won't touch other Docker resources.
         
         Warning:
             This is a destructive operation that will remove ALL data associated with the Isaac Lab container.
@@ -393,16 +391,20 @@ class ContainerInterface:
             env=self.environ,
         )
         
-        # Create a temporary cleanup container to remove root-owned files
-        print("[INFO] Creating temporary container to clean up files...\n")
+        # Create a temporary cleanup container to remove root-owned files from docker_volumes directory (except assets)
+        docker_volumes_dir = self.context_dir.parent.parent / "docker_volumes"
+        print(f"[INFO] Creating temporary container to clean up docker_volumes directory (preserving assets): {docker_volumes_dir}...\n")
         cleanup_container = "isaac-lab-cleanup"
         subprocess.run(
             ["docker", "run", "--rm", "-d", "--name", cleanup_container,
+             "-v", f"{docker_volumes_dir}:/cleanup/docker_volumes",
              "-v", f"{self.context_dir.parent}/logs:/cleanup/logs",
              "-v", f"{self.context_dir.parent}/outputs:/cleanup/outputs",
              "-v", f"{self.context_dir.parent}/data_storage:/cleanup/data_storage",
              "-v", f"{self.context_dir.parent}/docs/_build:/cleanup/docs_build",
-             "alpine:latest", "sh", "-c", "rm -rf /cleanup/* && sleep 1"],
+             "alpine:latest", "sh", "-c", 
+             "find /cleanup/docker_volumes -mindepth 1 -maxdepth 1 ! -name 'assets' -exec rm -rf {} + && "
+             "rm -rf /cleanup/logs/* /cleanup/outputs/* /cleanup/data_storage/* /cleanup/docs_build/* && sleep 1"],
             check=False,
             cwd=self.context_dir,
             env=self.environ,
@@ -446,24 +448,6 @@ class ContainerInterface:
             env=self.environ,
         )
         
-        # Remove the container configuration file
-        config_file = self.context_dir.parent.parent / "docker_volumes" / "config" / ".container.cfg"
-        if config_file.exists():
-            print(f"[INFO] Removing container configuration file: {config_file}\n")
-            try:
-                config_file.unlink()
-            except Exception as e:
-                print(f"\t  Warning: Failed to remove config file: {e}")
-            
-        # Remove docker history file
-        history_file = self.context_dir.parent / "docker_volumes" / "shell_history" / ".bash_history"
-        if history_file.exists():
-            print(f"[INFO] Removing docker history file: {history_file}\n")
-            try:
-                history_file.unlink()
-            except Exception as e:
-                print(f"\t  Warning: Failed to remove history file: {e}")
-            
         print("[INFO] Deep cleanup completed.\n")
 
 

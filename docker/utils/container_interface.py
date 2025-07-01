@@ -171,7 +171,8 @@ class ContainerInterface:
         if self.profile != "base":
             subprocess.run(
                 [
-                    "docker-compose",
+                    "docker",
+                    "compose",
                     "-f",
                     "docker-compose.yaml",
                     "--env-file",
@@ -186,7 +187,7 @@ class ContainerInterface:
 
         # build the image for the profile
         subprocess.run(
-            ["docker-compose"]
+            ["docker", "compose"]
             + self.add_yamls
             + self.add_profiles
             + self.add_env_files
@@ -235,7 +236,7 @@ class ContainerInterface:
         if self.is_container_running():
             print(f"[INFO] Stopping the launched docker container '{self.container_name}'...\n")
             subprocess.run(
-                ["docker-compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["down"],
+                ["docker", "compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["down"],
                 check=False,
                 cwd=self.context_dir,
                 env=self.environ,
@@ -252,7 +253,7 @@ class ContainerInterface:
         if self.is_container_running():
             print(f"[INFO] Hard stopping the launched docker container '{self.container_name}'...\n")
             subprocess.run(
-                ["docker-compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["down", "--volumes"],
+                ["docker", "compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["down", "--volumes"],
                 check=False,
                 cwd=self.context_dir,
                 env=self.environ,
@@ -266,7 +267,7 @@ class ContainerInterface:
         
         # First, bring down the containers and remove volumes
         subprocess.run(
-            ["docker-compose"]
+            ["docker", "compose"]
             + self.add_yamls
             + self.add_profiles
             + self.add_env_files
@@ -355,7 +356,7 @@ class ContainerInterface:
 
         # run the docker compose config command to generate the configuration
         subprocess.run(
-            ["docker-compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["config"] + output, 
+            ["docker", "compose"] + self.add_yamls + self.add_profiles + self.add_env_files + ["config"] + output, 
             check=False,
             cwd=self.context_dir,
             env=self.environ,
